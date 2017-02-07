@@ -10,8 +10,6 @@ GutterContainerComponent = require './gutter-container-component'
 InputComponent = require './input-component'
 LinesComponent = require './lines-component'
 OffScreenBlockDecorationsComponent = require './off-screen-block-decorations-component'
-ScrollbarComponent = require './scrollbar-component'
-ScrollbarCornerComponent = require './scrollbar-corner-component'
 OverlayManager = require './overlay-manager'
 DOMElementPool = require './dom-element-pool'
 LinesYardstick = require './lines-yardstick'
@@ -86,15 +84,6 @@ class TextEditorComponent
 
     @linesYardstick = new LinesYardstick(@editor, @linesComponent, lineTopIndex)
     @presenter.setLinesYardstick(@linesYardstick)
-
-    @horizontalScrollbarComponent = new ScrollbarComponent({orientation: 'horizontal', onScroll: @onHorizontalScroll})
-    @scrollViewNode.appendChild(@horizontalScrollbarComponent.getDomNode())
-
-    @verticalScrollbarComponent = new ScrollbarComponent({orientation: 'vertical', onScroll: @onVerticalScroll})
-    @domNode.appendChild(@verticalScrollbarComponent.getDomNode())
-
-    @scrollbarCornerComponent = new ScrollbarCornerComponent
-    @domNode.appendChild(@scrollbarCornerComponent.getDomNode())
 
     @observeEditor()
     @listenForDOMEvents()
@@ -184,9 +173,6 @@ class TextEditorComponent
     @hiddenInputComponent.updateSync(@newState)
     @offScreenBlockDecorationsComponent.updateSync(@newState)
     @linesComponent.updateSync(@newState)
-    @horizontalScrollbarComponent.updateSync(@newState)
-    @verticalScrollbarComponent.updateSync(@newState)
-    @scrollbarCornerComponent.updateSync(@newState)
 
     @overlayManager?.render(@newState)
 
@@ -215,10 +201,10 @@ class TextEditorComponent
     # visible again, because content might have been reflowed and measurements
     # could be outdated.
     @invalidateMeasurements()
-    @measureScrollbars() if @measureScrollbarsWhenShown
     @sampleFontStyling()
     @measureWindowSize()
     @measureDimensions()
+    @measureScrollPosition()
     @measureLineHeightAndDefaultCharWidth() if @measureLineHeightAndDefaultCharWidthWhenShown
     @editor.setVisible(true)
     @performedInitialMeasurement = true
@@ -389,59 +375,39 @@ class TextEditorComponent
 
     @editor.insertText(event.data, groupUndo: true)
 
-  onVerticalScroll: (scrollTop) =>
-    return if @updateRequested or scrollTop is @presenter.getScrollTop()
-
-    animationFramePending = @pendingScrollTop?
-    @pendingScrollTop = scrollTop
-    unless animationFramePending
-      @requestAnimationFrame =>
-        pendingScrollTop = @pendingScrollTop
-        @pendingScrollTop = null
-        @presenter.setScrollTop(pendingScrollTop)
-        @presenter.commitPendingScrollTopPosition()
-
-  onHorizontalScroll: (scrollLeft) =>
-    return if @updateRequested or scrollLeft is @presenter.getScrollLeft()
-
-    animationFramePending = @pendingScrollLeft?
-    @pendingScrollLeft = scrollLeft
-    unless animationFramePending
-      @requestAnimationFrame =>
-        @presenter.setScrollLeft(@pendingScrollLeft)
-        @presenter.commitPendingScrollLeftPosition()
-        @pendingScrollLeft = null
-
   onMouseWheel: (event) =>
     # Only scroll in one direction at a time
-    {wheelDeltaX, wheelDeltaY} = event
-
-    if Math.abs(wheelDeltaX) > Math.abs(wheelDeltaY)
-      # Scrolling horizontally
-      previousScrollLeft = @presenter.getScrollLeft()
-      updatedScrollLeft = previousScrollLeft - Math.round(wheelDeltaX * @editor.getScrollSensitivity() / 100)
-
-      event.preventDefault() if @presenter.canScrollLeftTo(updatedScrollLeft)
-      @presenter.setScrollLeft(updatedScrollLeft)
-    else
-      # Scrolling vertically
-      @presenter.setMouseWheelScreenRow(@screenRowForNode(event.target))
-      previousScrollTop = @presenter.getScrollTop()
-      updatedScrollTop = previousScrollTop - Math.round(wheelDeltaY * @editor.getScrollSensitivity() / 100)
-
-      event.preventDefault() if @presenter.canScrollTopTo(updatedScrollTop)
-      @presenter.setScrollTop(updatedScrollTop)
+    # {wheelDeltaX, wheelDeltaY} = event
+    #
+    # if Math.abs(wheelDeltaX) > Math.abs(wheelDeltaY)
+    #   # Scrolling horizontally
+    #   previousScrollLeft = @presenter.getScrollLeft()
+    #   updatedScrollLeft = previousScrollLeft - Math.round(wheelDeltaX * @editor.getScrollSensitivity() / 100)
+    #
+    #   event.preventDefault() if @presenter.canScrollLeftTo(updatedScrollLeft)
+    #   @presenter.setScrollLeft(updatedScrollLeft)
+    # else
+    #   # Scrolling vertically
+    #   @presenter.setMouseWheelScreenRow(@screenRowForNode(event.target))
+    #   previousScrollTop = @presenter.getScrollTop()
+    #   updatedScrollTop = previousScrollTop - Math.round(wheelDeltaY * @editor.getScrollSensitivity() / 100)
+    #
+    #   event.preventDefault() if @presenter.canScrollTopTo(updatedScrollTop)
+    #   @presenter.setScrollTop(updatedScrollTop)
 
   onScrollViewScroll: =>
-    if @mounted
-      @scrollViewNode.scrollTop = 0
-      @scrollViewNode.scrollLeft = 0
+    @measureScrollPosition()
+
+  measureScrollPosition: ->
+    @presenter.updateScrollTop(@scrollViewNode.scrollTop)
+    @presenter.updateScrollLeft(@scrollViewNode.scrollLeft)
+    @updateSync()
 
   onDidChangeScrollTop: (callback) ->
-    @presenter.onDidChangeScrollTop(callback)
+    # @presenter.onDidChangeScrollTop(callback)
 
   onDidChangeScrollLeft: (callback) ->
-    @presenter.onDidChangeScrollLeft(callback)
+    # @presenter.onDidChangeScrollLeft(callback)
 
   setScrollLeft: (scrollLeft) ->
     @presenter.setScrollLeft(scrollLeft)
@@ -544,8 +510,6 @@ class TextEditorComponent
       # Only handle mouse down events for left mouse button on all platforms
       # and middle mouse button on Linux since it pastes the selection clipboard
       return
-
-    return if event.target?.classList.contains('horizontal-scrollbar')
 
     {detail, shiftKey, metaKey, ctrlKey} = event
 
@@ -819,22 +783,6 @@ class TextEditorComponent
     else
       @measureLineHeightAndDefaultCharWidthWhenShown = true
 
-  measureScrollbars: ->
-    @measureScrollbarsWhenShown = false
-
-    cornerNode = @scrollbarCornerComponent.getDomNode()
-    originalDisplayValue = cornerNode.style.display
-
-    cornerNode.style.display = 'block'
-
-    width = (cornerNode.offsetWidth - cornerNode.clientWidth) or 15
-    height = (cornerNode.offsetHeight - cornerNode.clientHeight) or 15
-
-    @presenter.setVerticalScrollbarWidth(width)
-    @presenter.setHorizontalScrollbarHeight(height)
-
-    cornerNode.style.display = originalDisplayValue
-
   containsScrollbarSelector: (stylesheet) ->
     for rule in stylesheet.cssRules
       if rule.selectorText?.indexOf('scrollbar') > -1
@@ -842,37 +790,37 @@ class TextEditorComponent
     false
 
   refreshScrollbars: =>
-    if @isVisible()
-      @measureScrollbarsWhenShown = false
-    else
-      @measureScrollbarsWhenShown = true
-      return
-
-    verticalNode = @verticalScrollbarComponent.getDomNode()
-    horizontalNode = @horizontalScrollbarComponent.getDomNode()
-    cornerNode = @scrollbarCornerComponent.getDomNode()
-
-    originalVerticalDisplayValue = verticalNode.style.display
-    originalHorizontalDisplayValue = horizontalNode.style.display
-    originalCornerDisplayValue = cornerNode.style.display
-
-    # First, hide all scrollbars in case they are visible so they take on new
-    # styles when they are shown again.
-    verticalNode.style.display = 'none'
-    horizontalNode.style.display = 'none'
-    cornerNode.style.display = 'none'
-
-    # Force a reflow
-    cornerNode.offsetWidth
-
-    # Now measure the new scrollbar dimensions
-    @measureScrollbars()
-
-    # Now restore the display value for all scrollbars, since they were
-    # previously hidden
-    verticalNode.style.display = originalVerticalDisplayValue
-    horizontalNode.style.display = originalHorizontalDisplayValue
-    cornerNode.style.display = originalCornerDisplayValue
+    # if @isVisible()
+    #   @measureScrollbarsWhenShown = false
+    # else
+    #   @measureScrollbarsWhenShown = true
+    #   return
+    #
+    # verticalNode = @verticalScrollbarComponent.getDomNode()
+    # horizontalNode = @horizontalScrollbarComponent.getDomNode()
+    # cornerNode = @scrollbarCornerComponent.getDomNode()
+    #
+    # originalVerticalDisplayValue = verticalNode.style.display
+    # originalHorizontalDisplayValue = horizontalNode.style.display
+    # originalCornerDisplayValue = cornerNode.style.display
+    #
+    # # First, hide all scrollbars in case they are visible so they take on new
+    # # styles when they are shown again.
+    # verticalNode.style.display = 'none'
+    # horizontalNode.style.display = 'none'
+    # cornerNode.style.display = 'none'
+    #
+    # # Force a reflow
+    # cornerNode.offsetWidth
+    #
+    # # Now measure the new scrollbar dimensions
+    # @measureScrollbars()
+    #
+    # # Now restore the display value for all scrollbars, since they were
+    # # previously hidden
+    # verticalNode.style.display = originalVerticalDisplayValue
+    # horizontalNode.style.display = originalHorizontalDisplayValue
+    # cornerNode.style.display = originalCornerDisplayValue
 
   consolidateSelections: (e) ->
     e.abortKeyBinding() unless @editor.consolidateSelections()

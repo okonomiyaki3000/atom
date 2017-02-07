@@ -81,7 +81,6 @@ class TextEditorPresenter
     @updating = true
 
     @updateVerticalDimensions()
-    @updateScrollbarDimensions()
 
     @commitPendingLogicalScrollTopPosition()
     @commitPendingScrollTopPosition()
@@ -114,9 +113,6 @@ class TextEditorPresenter
 
     @updateLines()
 
-    @updateVerticalScrollState()
-    @updateHorizontalScrollState()
-    @updateScrollbarsState()
     @updateHiddenInputState()
     @updateContentState()
     @updateFocusedState()
@@ -179,7 +175,6 @@ class TextEditorPresenter
     return
 
   didChangeScrollPastEnd: ->
-    @updateScrollHeight()
     @emitDidUpdateState()
 
   didChangeShowLineNumbers: ->
@@ -190,8 +185,6 @@ class TextEditorPresenter
 
   buildState: ->
     @state =
-      horizontalScrollbar: {}
-      verticalScrollbar: {}
       hiddenInput: {}
       content:
         scrollingVertically: false
@@ -240,39 +233,14 @@ class TextEditorPresenter
     else
       @state.width = null
 
-  updateVerticalScrollState: ->
-    @state.content.scrollHeight = @scrollHeight
-    @sharedGutterStyles.scrollHeight = @scrollHeight
-    @state.verticalScrollbar.scrollHeight = @scrollHeight
-
-    @state.content.scrollTop = @scrollTop
-    @sharedGutterStyles.scrollTop = @scrollTop
-    @state.verticalScrollbar.scrollTop = @scrollTop
-
-  updateHorizontalScrollState: ->
-    @state.content.scrollWidth = @scrollWidth
-    @state.horizontalScrollbar.scrollWidth = @scrollWidth
-
-    @state.content.scrollLeft = @scrollLeft
-    @state.horizontalScrollbar.scrollLeft = @scrollLeft
-
-  updateScrollbarsState: ->
-    @state.horizontalScrollbar.visible = @horizontalScrollbarHeight > 0
-    @state.horizontalScrollbar.height = @measuredHorizontalScrollbarHeight
-    @state.horizontalScrollbar.right = @verticalScrollbarWidth
-
-    @state.verticalScrollbar.visible = @verticalScrollbarWidth > 0
-    @state.verticalScrollbar.width = @measuredVerticalScrollbarWidth
-    @state.verticalScrollbar.bottom = @horizontalScrollbarHeight
-
   updateHiddenInputState: ->
     return unless lastCursor = @model.getLastCursor()
 
     {top, left, height, width} = @pixelRectForScreenRange(lastCursor.getScreenRange())
 
     if @focused
-      @state.hiddenInput.top = Math.max(Math.min(top, @clientHeight - height), 0)
-      @state.hiddenInput.left = Math.max(Math.min(left, @clientWidth - width), 0)
+      @state.hiddenInput.top = Math.max(Math.min(top, @height - height), 0)
+      @state.hiddenInput.left = Math.max(Math.min(left, @width - width), 0)
     else
       @state.hiddenInput.top = 0
       @state.hiddenInput.left = 0
@@ -285,15 +253,12 @@ class TextEditorPresenter
       @sharedGutterStyles.maxHeight = @boundingClientRect.height
       @state.content.maxHeight = @boundingClientRect.height
 
-    verticalScrollbarWidth = @verticalScrollbarWidth ? 0
     contentFrameWidth = @contentFrameWidth ? 0
     contentWidth = @contentWidth ? 0
     if @model.getAutoWidth()
-      @state.content.width = contentWidth + verticalScrollbarWidth
+      @state.content.width = contentWidth
     else
-      @state.content.width = Math.max(contentWidth + verticalScrollbarWidth, contentFrameWidth)
-    @state.content.scrollWidth = @scrollWidth
-    @state.content.scrollLeft = @scrollLeft
+      @state.content.width = Math.max(contentWidth, contentFrameWidth)
     @state.content.backgroundColor = if @model.isMini() then null else @backgroundColor
     @state.content.placeholderText = if @model.isEmpty() then @model.getPlaceholderText() else null
 
@@ -373,8 +338,8 @@ class TextEditorPresenter
       height = bottom - top
 
       tile = @state.content.tiles[tileStartRow] ?= {}
-      tile.top = top - @scrollTop
-      tile.left = -@scrollLeft
+      tile.top = top
+      tile.left = 0
       tile.height = height
       tile.display = "block"
       tile.zIndex = zIndex
@@ -632,31 +597,10 @@ class TextEditorPresenter
     )
 
   updateRowsPerPage: ->
-    rowsPerPage = Math.floor(@getClientHeight() / @lineHeight)
+    rowsPerPage = Math.floor(@height / @lineHeight)
     if rowsPerPage isnt @rowsPerPage
       @rowsPerPage = rowsPerPage
       @model.setRowsPerPage(@rowsPerPage)
-
-  updateScrollWidth: ->
-    return unless @contentWidth? and @clientWidth?
-
-    scrollWidth = Math.max(@contentWidth, @clientWidth)
-    unless @scrollWidth is scrollWidth
-      @scrollWidth = scrollWidth
-      @updateScrollLeft(@scrollLeft)
-
-  updateScrollHeight: ->
-    return unless @contentHeight? and @clientHeight?
-
-    contentHeight = @contentHeight
-    if @model.getScrollPastEnd()
-      extraScrollHeight = @clientHeight - (@lineHeight * 3)
-      contentHeight += extraScrollHeight if extraScrollHeight > 0
-    scrollHeight = Math.max(contentHeight, @height)
-
-    unless @scrollHeight is scrollHeight
-      @scrollHeight = scrollHeight
-      @updateScrollTop(@scrollTop)
 
   updateVerticalDimensions: ->
     if @lineHeight?
@@ -665,8 +609,6 @@ class TextEditorPresenter
 
     if @contentHeight isnt oldContentHeight
       @updateHeight()
-      @updateScrollbarDimensions()
-      @updateScrollHeight()
 
   updateHorizontalDimensions: ->
     if @baseCharacterWidth?
@@ -676,39 +618,7 @@ class TextEditorPresenter
       @contentWidth += @scrollLeft
       @contentWidth += 1 unless @model.isSoftWrapped() # account for cursor width
 
-    if @contentWidth isnt oldContentWidth
-      @updateScrollbarDimensions()
-      @updateClientWidth()
-      @updateScrollWidth()
-
-  updateClientHeight: ->
-    return unless @height? and @horizontalScrollbarHeight?
-
-    clientHeight = @height - @horizontalScrollbarHeight
-    @model.setHeight(clientHeight, true)
-
-    unless @clientHeight is clientHeight
-      @clientHeight = clientHeight
-      @updateScrollHeight()
-      @updateScrollTop(@scrollTop)
-
-  updateClientWidth: ->
-    return unless @contentFrameWidth? and @verticalScrollbarWidth?
-
-    if @model.getAutoWidth()
-      clientWidth = @contentWidth
-    else
-      clientWidth = @contentFrameWidth - @verticalScrollbarWidth
-
-    @model.setWidth(clientWidth, true) unless @editorWidthInChars
-
-    unless @clientWidth is clientWidth
-      @clientWidth = clientWidth
-      @updateScrollWidth()
-      @updateScrollLeft(@scrollLeft)
-
   updateScrollTop: (scrollTop) ->
-    scrollTop = @constrainScrollTop(scrollTop)
     if scrollTop isnt @realScrollTop and not Number.isNaN(scrollTop)
       @realScrollTop = scrollTop
       @scrollTop = Math.round(scrollTop)
@@ -719,65 +629,13 @@ class TextEditorPresenter
       @didStartScrolling()
       @emitter.emit 'did-change-scroll-top', @scrollTop
 
-  constrainScrollTop: (scrollTop) ->
-    return scrollTop unless scrollTop? and @scrollHeight? and @clientHeight?
-    Math.max(0, Math.min(scrollTop, @scrollHeight - @clientHeight))
-
   updateScrollLeft: (scrollLeft) ->
-    scrollLeft = @constrainScrollLeft(scrollLeft)
     if scrollLeft isnt @realScrollLeft and not Number.isNaN(scrollLeft)
       @realScrollLeft = scrollLeft
       @scrollLeft = Math.round(scrollLeft)
       @model.setFirstVisibleScreenColumn(Math.round(@scrollLeft / @baseCharacterWidth))
 
       @emitter.emit 'did-change-scroll-left', @scrollLeft
-
-  constrainScrollLeft: (scrollLeft) ->
-    return scrollLeft unless scrollLeft? and @scrollWidth? and @clientWidth?
-    Math.max(0, Math.min(scrollLeft, @scrollWidth - @clientWidth))
-
-  updateScrollbarDimensions: ->
-    return unless @contentFrameWidth? and @height?
-    return unless @measuredVerticalScrollbarWidth? and @measuredHorizontalScrollbarHeight?
-    return unless @contentWidth? and @contentHeight?
-
-    if @model.getAutoWidth()
-      clientWidthWithVerticalScrollbar = @contentWidth + @measuredVerticalScrollbarWidth
-    else
-      clientWidthWithVerticalScrollbar = @contentFrameWidth
-    clientWidthWithoutVerticalScrollbar = clientWidthWithVerticalScrollbar - @measuredVerticalScrollbarWidth
-    clientHeightWithHorizontalScrollbar = @height
-    clientHeightWithoutHorizontalScrollbar = clientHeightWithHorizontalScrollbar - @measuredHorizontalScrollbarHeight
-
-    horizontalScrollbarVisible =
-      not @model.isMini() and
-        (@contentWidth > clientWidthWithVerticalScrollbar or
-         @contentWidth > clientWidthWithoutVerticalScrollbar and @contentHeight > clientHeightWithHorizontalScrollbar)
-
-    verticalScrollbarVisible =
-      not @model.isMini() and
-        (@contentHeight > clientHeightWithHorizontalScrollbar or
-         @contentHeight > clientHeightWithoutHorizontalScrollbar and @contentWidth > clientWidthWithVerticalScrollbar)
-
-    horizontalScrollbarHeight =
-      if horizontalScrollbarVisible
-        @measuredHorizontalScrollbarHeight
-      else
-        0
-
-    verticalScrollbarWidth =
-      if verticalScrollbarVisible
-        @measuredVerticalScrollbarWidth
-      else
-        0
-
-    unless @horizontalScrollbarHeight is horizontalScrollbarHeight
-      @horizontalScrollbarHeight = horizontalScrollbarHeight
-      @updateClientHeight()
-
-    unless @verticalScrollbarWidth is verticalScrollbarWidth
-      @verticalScrollbarWidth = verticalScrollbarWidth
-      @updateClientWidth()
 
   lineDecorationClassesForRow: (row) ->
     return null if @model.isMini()
@@ -852,51 +710,6 @@ class TextEditorPresenter
   getRealScrollLeft: ->
     @realScrollLeft ? @scrollLeft
 
-  getClientHeight: ->
-    if @clientHeight
-      @clientHeight
-    else
-      @explicitHeight - @horizontalScrollbarHeight
-
-  getClientWidth: ->
-    if @clientWidth
-      @clientWidth
-    else
-      @contentFrameWidth - @verticalScrollbarWidth
-
-  getScrollBottom: -> @getScrollTop() + @getClientHeight()
-  setScrollBottom: (scrollBottom) ->
-    @setScrollTop(scrollBottom - @getClientHeight())
-    @getScrollBottom()
-
-  getScrollRight: -> @getScrollLeft() + @getClientWidth()
-  setScrollRight: (scrollRight) ->
-    @setScrollLeft(scrollRight - @getClientWidth())
-    @getScrollRight()
-
-  getScrollHeight: ->
-    @scrollHeight
-
-  getScrollWidth: ->
-    @scrollWidth
-
-  getMaxScrollTop: ->
-    scrollHeight = @getScrollHeight()
-    clientHeight = @getClientHeight()
-    return 0 unless scrollHeight? and clientHeight?
-
-    scrollHeight - clientHeight
-
-  setHorizontalScrollbarHeight: (horizontalScrollbarHeight) ->
-    unless @measuredHorizontalScrollbarHeight is horizontalScrollbarHeight
-      @measuredHorizontalScrollbarHeight = horizontalScrollbarHeight
-      @emitDidUpdateState()
-
-  setVerticalScrollbarWidth: (verticalScrollbarWidth) ->
-    unless @measuredVerticalScrollbarWidth is verticalScrollbarWidth
-      @measuredVerticalScrollbarWidth = verticalScrollbarWidth
-      @emitDidUpdateState()
-
   setAutoHeight: (autoHeight) ->
     unless @autoHeight is autoHeight
       @autoHeight = autoHeight
@@ -913,9 +726,6 @@ class TextEditorPresenter
     height = @explicitHeight ? @contentHeight
     unless @height is height
       @height = height
-      @updateScrollbarDimensions()
-      @updateClientHeight()
-      @updateScrollHeight()
       @updateEndRow()
 
   didChangeAutoWidth: ->
@@ -925,8 +735,6 @@ class TextEditorPresenter
     if @contentFrameWidth isnt contentFrameWidth or @editorWidthInChars?
       @contentFrameWidth = contentFrameWidth
       @editorWidthInChars = null
-      @updateScrollbarDimensions()
-      @updateClientWidth()
       @invalidateAllBlockDecorationsDimensions = true
       @shouldUpdateDecorations = true
       @emitDidUpdateState()
@@ -1007,8 +815,6 @@ class TextEditorPresenter
 
   pixelPositionForScreenPosition: (screenPosition) ->
     position = @linesYardstick.pixelPositionForScreenPosition(screenPosition)
-    position.top -= @getScrollTop()
-    position.left -= @getScrollLeft()
 
     position.top = Math.round(position.top)
     position.left = Math.round(position.left)
@@ -1016,7 +822,7 @@ class TextEditorPresenter
     position
 
   hasPixelRectRequirements: ->
-    @hasPixelPositionRequirements() and @scrollWidth?
+    @hasPixelPositionRequirements()
 
   hasOverlayPositionRequirements: ->
     @hasPixelRectRequirements() and @boundingClientRect? and @windowWidth and @windowHeight
@@ -1038,8 +844,6 @@ class TextEditorPresenter
 
   pixelRectForScreenRange: (screenRange) ->
     rect = @absolutePixelRectForScreenRange(screenRange)
-    rect.top -= @getScrollTop()
-    rect.left -= @getScrollLeft()
     rect.top = Math.round(rect.top)
     rect.left = Math.round(rect.left)
     rect.width = Math.round(rect.width)
@@ -1231,14 +1035,12 @@ class TextEditorPresenter
       screenRange.end.column = 0
 
   repositionRegionWithinTile: (region, tileStartRow) ->
-    region.top += @scrollTop - @lineTopIndex.pixelPositionBeforeBlocksForRow(tileStartRow)
+    region.top -= @lineTopIndex.pixelPositionBeforeBlocksForRow(tileStartRow)
 
   buildHighlightRegions: (screenRange) ->
     lineHeightInPixels = @lineHeight
     startPixelPosition = @pixelPositionForScreenPosition(screenRange.start)
     endPixelPosition = @pixelPositionForScreenPosition(screenRange.end)
-    startPixelPosition.left += @scrollLeft
-    endPixelPosition.left += @scrollLeft
     spannedRows = screenRange.end.row - screenRange.start.row + 1
 
     regions = []
@@ -1436,103 +1238,19 @@ class TextEditorPresenter
   getHorizontalScrollMarginInPixels: ->
     Math.round(@model.getHorizontalScrollMargin() * @baseCharacterWidth)
 
-  getVerticalScrollbarWidth: ->
-    @verticalScrollbarWidth
-
-  getHorizontalScrollbarHeight: ->
-    @horizontalScrollbarHeight
-
   commitPendingLogicalScrollTopPosition: ->
-    return unless @pendingScrollLogicalPosition?
-
-    {screenRange, options} = @pendingScrollLogicalPosition
-
-    verticalScrollMarginInPixels = @getVerticalScrollMarginInPixels()
-
-    top = @lineTopIndex.pixelPositionAfterBlocksForRow(screenRange.start.row)
-    bottom = @lineTopIndex.pixelPositionAfterBlocksForRow(screenRange.end.row) + @lineHeight
-
-    if options?.center
-      desiredScrollCenter = (top + bottom) / 2
-      unless @getScrollTop() < desiredScrollCenter < @getScrollBottom()
-        desiredScrollTop = desiredScrollCenter - @getClientHeight() / 2
-        desiredScrollBottom = desiredScrollCenter + @getClientHeight() / 2
-    else
-      desiredScrollTop = top - verticalScrollMarginInPixels
-      desiredScrollBottom = bottom + verticalScrollMarginInPixels
-
-    if options?.reversed ? true
-      if desiredScrollBottom > @getScrollBottom()
-        @updateScrollTop(desiredScrollBottom - @getClientHeight())
-      if desiredScrollTop < @getScrollTop()
-        @updateScrollTop(desiredScrollTop)
-    else
-      if desiredScrollTop < @getScrollTop()
-        @updateScrollTop(desiredScrollTop)
-      if desiredScrollBottom > @getScrollBottom()
-        @updateScrollTop(desiredScrollBottom - @getClientHeight())
 
   commitPendingLogicalScrollLeftPosition: ->
-    return unless @pendingScrollLogicalPosition?
-
-    {screenRange, options} = @pendingScrollLogicalPosition
-
-    horizontalScrollMarginInPixels = @getHorizontalScrollMarginInPixels()
-
-    {left} = @pixelRectForScreenRange(new Range(screenRange.start, screenRange.start))
-    {left: right} = @pixelRectForScreenRange(new Range(screenRange.end, screenRange.end))
-
-    left += @scrollLeft
-    right += @scrollLeft
-
-    desiredScrollLeft = left - horizontalScrollMarginInPixels
-    desiredScrollRight = right + horizontalScrollMarginInPixels
-
-    if options?.reversed ? true
-      if desiredScrollRight > @getScrollRight()
-        @updateScrollLeft(desiredScrollRight - @getClientWidth())
-      if desiredScrollLeft < @getScrollLeft()
-        @updateScrollLeft(desiredScrollLeft)
-    else
-      if desiredScrollLeft < @getScrollLeft()
-        @updateScrollLeft(desiredScrollLeft)
-      if desiredScrollRight > @getScrollRight()
-        @updateScrollLeft(desiredScrollRight - @getClientWidth())
 
   commitPendingScrollLeftPosition: ->
-    if @pendingScrollLeft?
-      @updateScrollLeft(@pendingScrollLeft)
-      @pendingScrollLeft = null
 
   commitPendingScrollTopPosition: ->
-    if @pendingScrollTop?
-      @updateScrollTop(@pendingScrollTop)
-      @pendingScrollTop = null
 
   clearPendingScrollPosition: ->
-    @pendingScrollLogicalPosition = null
-    @pendingScrollTop = null
-    @pendingScrollLeft = null
-
-  canScrollLeftTo: (scrollLeft) ->
-    @scrollLeft isnt @constrainScrollLeft(scrollLeft)
-
-  canScrollTopTo: (scrollTop) ->
-    @scrollTop isnt @constrainScrollTop(scrollTop)
 
   restoreScrollTopIfNeeded: ->
-    unless @scrollTop?
-      @updateScrollTop(@lineTopIndex.pixelPositionAfterBlocksForRow(@model.getFirstVisibleScreenRow()))
 
   restoreScrollLeftIfNeeded: ->
-    unless @scrollLeft?
-      @updateScrollLeft(@model.getFirstVisibleScreenColumn() * @baseCharacterWidth)
-
-  onDidChangeScrollTop: (callback) ->
-    @emitter.on 'did-change-scroll-top', callback
-
-  onDidChangeScrollLeft: (callback) ->
-    @emitter.on 'did-change-scroll-left', callback
 
   getVisibleRowRange: ->
     [@startRow, @endRow]
