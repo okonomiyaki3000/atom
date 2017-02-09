@@ -1,7 +1,7 @@
 {
   "name": "atom",
   "productName": "Atom",
-  "version": "1.15.0-dev",
+  "version": "1.16.0-dev",
   "description": "A hackable text editor for the 21st Century.",
   "main": "./src/main-process/main.js",
   "repository": {
@@ -65,7 +65,7 @@
     "sinon": "1.17.4",
     "source-map-support": "^0.3.2",
     "temp": "0.8.1",
-    "text-buffer": "10.3.3",
+    "text-buffer": "10.3.5",
     "typescript-simple": "1.0.0",
     "underscore-plus": "^1.6.6",
     "winreg": "^1.2.1",
@@ -124,7 +124,7 @@
     "symbols-view": "0.114.0",
     "tabs": "0.104.1",
     "timecop": "0.34.0",
-    "tree-view": "0.214.0",
+    "tree-view": "0.214.1",
     "update-package-dependencies": "0.10.0",
     "welcome": "0.36.0",
     "whitespace": "0.36.2",
